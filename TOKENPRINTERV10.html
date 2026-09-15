@@ -420,7 +420,7 @@
   }
 
   /* -------------------------------------------------------------
-     4. CARGA MASIVA INSTANTÁNEA DESDE tokens_db.json
+     4. CARGA MASIVA MULTIPARTE (< 25 MB GITHUB COMPATIBLE)
   ------------------------------------------------------------- */
   document.getElementById('btnDownloadOffline').addEventListener('click', async () => {
     const btn = document.getElementById('btnDownloadOffline');
@@ -430,29 +430,39 @@
 
     btn.disabled = true;
     box.style.display = "block";
-    progressText.textContent = "Descargando archivo comprimido tokens_db.json...";
+    progressText.textContent = "Descargando partes de la colección (Parte 1 y 2)...";
     progressFill.style.width = "30%";
 
     try {
-      const resp = await fetch('tokens_db.json');
-      if (!resp.ok) throw new Error("No se ha encontrado el archivo tokens_db.json en el servidor.");
+      // Descarga simultánea de ambas partes
+      const [res1, res2] = await Promise.all([
+        fetch('tokens_part1.json'),
+        fetch('tokens_part2.json')
+      ]);
 
-      progressText.textContent = "Desempaquetando base de datos binaria...";
-      progressFill.style.width = "65%";
-      const tokensDb = await resp.json();
+      if (!res1.ok || !res2.ok) {
+        throw new Error("No se encontraron los archivos tokens_part1.json y tokens_part2.json en el servidor.");
+      }
 
-      const keys = Object.keys(tokensDb);
+      progressText.textContent = "Fusionando paquetes de datos...";
+      progressFill.style.width = "60%";
+
+      const [db1, db2] = await Promise.all([res1.json(), res2.json()]);
+      const fullDb = Object.assign({}, db1, db2);
+
+      const keys = Object.keys(fullDb);
       const total = keys.length;
 
-      // Volcado directo en IndexedDB
+      progressText.textContent = `Guardando ${total} cartas en memoria local...`;
+      progressFill.style.width = "85%";
+
       const tx = db.transaction("tokens", "readwrite");
       const store = tx.objectStore("tokens");
 
       for (let i = 0; i < total; i++) {
         const k = keys[i];
-        const item = tokensDb[k];
+        const item = fullDb[k];
 
-        // Convertir la cadena hexadecimal a líneas de bytes
         const hexStr = item.hex;
         const totalBytes = hexStr.length / 2;
         const rawBytes = new Uint8Array(totalBytes);
@@ -477,20 +487,19 @@
 
       tx.oncomplete = () => {
         progressFill.style.width = "100%";
-        progressText.textContent = `¡Completado! ${total} tokens instalados en tu dispositivo.`;
+        progressText.textContent = `¡Completado! ${total} tokens instalados.`;
         refreshDataList();
         setTimeout(() => { box.style.display = "none"; }, 3000);
         btn.textContent = `Colección Completa (${total}) ✓`;
-        showToast("¡Base de datos 100% offline lista!");
+        showToast("¡Toda la base de datos está disponible sin conexión!");
       };
 
     } catch (err) {
       progressText.textContent = `Error: ${err.message}`;
       btn.disabled = false;
-      showToast("Asegúrate de subir tokens_db.json a GitHub.");
+      showToast("Comprueba que subiste part1 y part2 a GitHub.");
     }
   });
-
   /* -------------------------------------------------------------
      5. RECONOCIMIENTO DE VOZ Y MODAL
   ------------------------------------------------------------- */
