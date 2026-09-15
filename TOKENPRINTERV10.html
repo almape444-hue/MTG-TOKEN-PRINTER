@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MTG Commander & Voice Token Printer</title>
+  <style>
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0a0a0a; color: #f0f0f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Barra Superior */
+    header { height: 48px; background: #161616; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border-bottom: 1px solid #2a2a2a; z-index: 10; }
+    .layout-btns button { background: #262626; color: #bbb; border: 1px solid #444; padding: 5px 8px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; cursor: pointer; }
+    .layout-btns button.active { background: #3949ab; color: #fff; border-color: #5c6bc0; }
+    .header-right { display: flex; gap: 6px; }
+    .btn-header { background: #37474f; color: #eceff1; border: 1px solid #546e7a; padding: 5px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer; }
+    .btn-ble { background: #00897b; color: #fff; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; font-size: 0.75rem; cursor: pointer; }
+    .btn-ble.connected { background: #2e7d32; }
+
+    /* Mesa de Jugadores */
+    #tabletop { flex: 1; display: grid; gap: 4px; padding: 4px; position: relative; background: #000; height: calc(100vh - 48px); }
+    .grid-2 { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+    
+    .grid-3 { display: flex !important; flex-direction: column; gap: 4px; }
+    .grid-3 .p3-row-top { display: flex; flex: 1; gap: 4px; height: 50%; }
+    .grid-3 .p3-row-top .player-card { flex: 1; height: 100%; }
+    .grid-3 .p3-row-bottom { display: flex; flex: 1; height: 50%; }
+    .grid-3 .p3-row-bottom .player-card { flex: 1; height: 100%; }
+
+    .grid-4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+
+    .player-card { border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between; padding: 8px; position: relative; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); }
+    .p-p1 { background: #1a2332; }
+    .p-p2 { background: #2e1a1a; }
+    .p-p3 { background: #1b2e1b; }
+    .p-p4 { background: #2e281a; }
+
+    .player-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: bold; z-index: 2; }
+    .sub-counters { display: flex; gap: 6px; font-size: 0.75rem; }
+    .counter-badge { display: flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
+
+    /* Contador de Vidas */
+    .life-container { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; width: 100%; }
+    .life-display { font-size: 3.8rem; font-weight: 800; letter-spacing: -2px; pointer-events: none; }
+    .life-btn { position: absolute; top: 0; bottom: 0; width: 48%; background: transparent; border: none; font-size: 2.5rem; color: rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1; }
+    .btn-minus { left: 0; justify-content: flex-start; padding-left: 14px; }
+    .btn-plus { right: 0; justify-content: flex-end; padding-right: 14px; }
+    .life-btn:active { color: #fff; background: rgba(255,255,255,0.05); }
+
+    /* Cajón de contadores auxiliares */
+    .sub-drawer { display: none; position: absolute; inset: 0; background: rgba(14, 14, 14, 0.96); flex-direction: column; padding: 10px; justify-content: space-between; z-index: 5; }
+    .sub-drawer.active { display: flex; }
+    .sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .cmd-item { background: #222; border: 1px solid #333; border-radius: 6px; padding: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; }
+    .cmd-btn { width: 28px; height: 28px; border-radius: 4px; border: none; background: #333; color: #fff; font-weight: bold; cursor: pointer; }
+
+    /* Botón Central Micrófono */
+    #micHub { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%; background: #d32f2f; border: 3px solid #fff; box-shadow: 0 0 16px rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 20; }
+    #micHub.listening { background: #fbc02d; animation: pulse 1s infinite alternate; }
+    #micHub svg { width: 30px; height: 30px; fill: #fff; }
+
+    /* Modal Flotante de Previsualización */
+    #previewModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 100; flex-direction: column; align-items: center; justify-content: center; padding: 14px; }
+    #previewModal.show { display: flex; }
+    .modal-content { background: #1a1a1a; border: 1px solid #444; border-radius: 12px; padding: 14px; max-width: 320px; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #previewTitle { font-size: 0.95rem; font-weight: bold; text-align: center; color: #fff; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #previewStatus { font-size: 0.75rem; color: #a5d6a7; text-align: center; min-height: 16px; }
+    
+    .manual-input-box { display: flex; width: 100%; gap: 6px; }
+    .manual-input-box input { flex: 1; background: #242424; border: 1px solid #444; border-radius: 6px; padding: 8px; color: #fff; font-size: 0.85rem; }
+    .manual-input-box button { background: #3949ab; color: #fff; border: none; border-radius: 6px; padding: 8px 12px; font-size: 0.8rem; font-weight: bold; cursor: pointer; }
+
+    #modalCanvas { max-width: 180px; max-height: 250px; border-radius: 6px; border: 1px solid #555; background: #fff; display: none; }
+    .modal-actions { display: flex; gap: 8px; width: 100%; margin-top: 4px; }
+    .btn-modal-print { flex: 1; background: #2e7d32; color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; display: none; }
+    .btn-modal-cancel { flex: 1; background: #555; color: #fff; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+    /* Progreso de Descarga */
+    #downloadProgressBox { display: none; position: fixed; top: 54px; left: 10px; right: 10px; background: #162436; border: 1px solid #1e88e5; padding: 12px; border-radius: 8px; z-index: 60; font-size: 0.8rem; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .progress-bar-container { height: 10px; background: #0a1118; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+    .progress-bar-fill { height: 100%; width: 0%; background: #00e676; transition: width 0.15s; }
+
+    #toast { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: #222; border: 1px solid #444; padding: 8px 16px; border-radius: 20px; font-size: 0.8rem; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 50; text-align: center; max-width: 85%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    @keyframes pulse { from { transform: translate(-50%, -50%) scale(1); } to { transform: translate(-50%, -50%) scale(1.1); } }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="layout-btns">
+      <button onclick="setLayout(2)">2P</button>
+      <button onclick="setLayout(3)">3P</button>
+      <button class="active" onclick="setLayout(4)">4P</button>
+    </div>
+    <div class="header-right">
+      <button class="btn-header" id="btnDownloadOffline">Descargar Colección Completa</button>
+      <button class="btn-ble" id="btnBle">Conectar Impresora</button>
+    </div>
+  </header>
+
+  <div id="downloadProgressBox">
+    <div id="downloadProgressText">Descargando base de datos completa...</div>
+    <div class="progress-bar-container">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <div id="tabletop" class="grid-4">
+    <div id="micHub" title="Pulsar para hablar o buscar">
+      <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+    </div>
+  </div>
+
+  <div id="previewModal">
+    <div class="modal-content">
+      <div id="previewTitle">Buscar Ficha</div>
+      <div class="manual-input-box">
+        <input type="text" id="manualSearchInput" list="tokenDataList" placeholder="Escribe carta o token...">
+        <datalist id="tokenDataList"></datalist>
+        <button id="btnManualGo">Ver</button>
+      </div>
+      <div id="previewStatus">Di un nombre o escribe arriba</div>
+      <canvas id="modalCanvas" width="384" height="536"></canvas>
+      <div class="modal-actions">
+        <button class="btn-modal-cancel" onclick="closeModal()">Cerrar</button>
+        <button class="btn-modal-print" id="btnConfirmPrint">Imprimir</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast">Estado</div>
+
+<script>
+  /* -------------------------------------------------------------
+     1. NORMALIZACIÓN DE VOZ (DICCIONARIO EN ESPAÑOL)
+  ------------------------------------------------------------- */
+  const DICT_ES = {
+    "tesoro": "treasure", "tesoros": "treasure", "comida": "food", "pista": "clue", "pistas": "clue",
+    "sangre": "blood", "mapa": "map", "soldado": "soldier", "soldados": "soldier", "zombi": "zombie",
+    "zombie": "zombie", "zombis": "zombie", "zombies": "zombie", "trasgo": "goblin", "trasgos": "goblin",
+    "goblin": "goblin", "bestia": "beast", "espíritu": "spirit", "espiritu": "spirit", "construcción": "construct",
+    "constructo": "construct", "orco": "orc army", "ángel": "angel", "angel": "angel", "dragón": "dragon",
+    "dragon": "dragon", "elfo": "elf warrior", "vampiro": "vampire", "ácaro": "phyrexian mite", "acaro": "phyrexian mite",
+    "incubadora": "incubator", "caballero": "knight", "saprolín": "saproling", "saprolin": "saproling",
+    "insecto": "insect", "ave": "bird", "pájaro": "bird", "gato": "cat", "lobo": "wolf", "humano": "human",
+    "hada": "faerie", "vástago": "eldrazi scion", "vastago": "eldrazi scion", "engendro": "eldrazi spawn",
+    "elemental": "elemental", "sierpe": "wurm", "wurm": "wurm", "araña": "spider", "serpiente": "snake",
+    "tritón": "merfolk", "triton": "merfolk", "tentáculo": "tentacle", "demonio": "demon", "golem": "golem",
+    "óptero": "thopter", "optero": "thopter", "servo": "servo", "ciudadano": "citizen", "mercenario": "mercenary",
+    "maldito": "cursed", "monstruo": "monster", "real": "royal", "hechicero": "sorcerer", "copia": "copy"
+  };
+
+  function normalizeVoice(text) {
+    let clean = text.toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+      .replace(/^ficha de /g, "")
+      .replace(/^token de /g, "")
+      .replace(/^un /g, "")
+      .replace(/^una /g, "")
+      .replace(/ token$/g, "")
+      .trim();
+    return DICT_ES[clean] || clean;
+  }
+
+  /* -------------------------------------------------------------
+     2. GESTOR DE MESAS (COMMANDER CON 3P EQUILIBRADO)
+  ------------------------------------------------------------- */
+  let players = [];
+  function initPlayers(count) {
+    players = [];
+    for (let i = 0; i < count; i++) {
+      players.push({
+        id: i, name: `P${i + 1}`, life: 40, poison: 0, rad: 0, energy: 0, cmdDmg: { 0:0, 1:0, 2:0, 3:0 }
+      });
+    }
+    renderTable(count);
+  }
+
+  function setLayout(n) {
+    document.querySelectorAll('.layout-btns button').forEach((b, i) => b.className = (i + 2 === n) ? 'active' : '');
+    document.getElementById('tabletop').className = `grid-${n}`;
+    initPlayers(n);
+  }
+
+  function createCard(p, idx) {
+    const card = document.createElement('div');
+    card.className = `player-card p-p${idx + 1}`;
+    card.innerHTML = `
+      <div class="player-header">
+        <span>${p.name}</span>
+        <div class="sub-counters">
+          <div class="counter-badge" onclick="toggleDrawer(${p.id})">⚙ Contadores</div>
+          ${p.poison > 0 ? `<div class="counter-badge" style="color:#8bc34a">☣ ${p.poison}</div>` : ''}
+          ${p.rad > 0 ? `<div class="counter-badge" style="color:#00e676">☢ ${p.rad}</div>` : ''}
+        </div>
+      </div>
+      <div class="life-container">
+        <button class="life-btn btn-minus" onclick="alterLife(${p.id}, -1)">−</button>
+        <div class="life-display" id="life-${p.id}">${p.life}</div>
+        <button class="life-btn btn-plus" onclick="alterLife(${p.id}, 1)">+</button>
+      </div>
+      <div class="sub-drawer" id="drawer-${p.id}">
+        <div style="font-size:0.8rem; font-weight:bold; display:flex; justify-content:space-between;">
+          <span>Contadores</span>
+          <button onclick="toggleDrawer(${p.id})" style="background:none; border:none; color:#fff; font-size:1.1rem;">✕</button>
+        </div>
+        <div class="sub-grid">
+          <div class="cmd-item">
+            <span>Veneno (10)</span>
+            <div>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'poison', -1)">-</button>
+              <span id="poi-${p.id}" style="padding:0 4px">${p.poison}</span>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'poison', 1)">+</button>
+            </div>
+          </div>
+          <div class="cmd-item">
+            <span>Radiación</span>
+            <div>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'rad', -1)">-</button>
+              <span id="rad-${p.id}" style="padding:0 4px">${p.rad}</span>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'rad', 1)">+</button>
+            </div>
+          </div>
+          <div class="cmd-item">
+            <span>Energía</span>
+            <div>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'energy', -1)">-</button>
+              <span id="ene-${p.id}" style="padding:0 4px">${p.energy}</span>
+              <button class="cmd-btn" onclick="alterSub(${p.id}, 'energy', 1)">+</button>
+            </div>
+          </div>
+        </div>
+        <div style="font-size:0.75rem; color:#aaa; margin-top:2px;">Daño Comandante (21 max):</div>
+        <div class="sub-grid">
+          ${players.filter(o => o.id !== p.id).map(o => `
+            <div class="cmd-item">
+              <span>De P${o.id + 1}</span>
+              <div>
+                <button class="cmd-btn" onclick="alterCmdDmg(${p.id}, ${o.id}, -1)">-</button>
+                <span id="cmd-${p.id}-${o.id}" style="padding:0 4px">${p.cmdDmg[o.id] || 0}</span>
+                <button class="cmd-btn" onclick="alterCmdDmg(${p.id}, ${o.id}, 1)">+</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+    return card;
+  }
+
+  function renderTable(count) {
+    const t = document.getElementById('tabletop');
+    const mic = document.getElementById('micHub');
+    t.innerHTML = '';
+    if (count === 3) {
+      const top = document.createElement('div'); top.className = 'p3-row-top';
+      top.appendChild(createCard(players[0], 0));
+      top.appendChild(createCard(players[1], 1));
+      const bot = document.createElement('div'); bot.className = 'p3-row-bottom';
+      bot.appendChild(createCard(players[2], 2));
+      t.appendChild(top); t.appendChild(bot);
+    } else {
+      players.forEach((p, idx) => t.appendChild(createCard(p, idx)));
+    }
+    t.appendChild(mic);
+  }
+
+  function alterLife(id, delta) { players[id].life += delta; document.getElementById(`life-${id}`).textContent = players[id].life; }
+  function toggleDrawer(id) { document.getElementById(`drawer-${id}`).classList.toggle('active'); }
+  function alterSub(id, type, delta) { players[id][type] = Math.max(0, players[id][type] + delta); document.getElementById(`${type.substring(0,3)}-${id}`).textContent = players[id][type]; renderTable(players.length); }
+  function alterCmdDmg(id, srcId, delta) { players[id].cmdDmg[srcId] = Math.max(0, (players[id].cmdDmg[srcId] || 0) + delta); document.getElementById(`cmd-${id}-${srcId}`).textContent = players[id].cmdDmg[srcId]; alterLife(id, -delta); }
+
+  /* -------------------------------------------------------------
+     3. BASE DE DATOS LOCAL Y MOTOR DE DESCOMPRESIÓN ULTRA-RÁPIDO
+  ------------------------------------------------------------- */
+  let db;
+  let currentLines = null;
+  let currentW = 384, currentH = 536;
+
+  const dbReq = indexedDB.open("MTGTokenDatabase", 5);
+  dbReq.onupgradeneeded = (e) => {
+    const database = e.target.result;
+    if (!database.objectStoreNames.contains("tokens")) {
+      database.createObjectStore("tokens", { keyPath: "key" });
+    }
+  };
+  dbReq.onsuccess = (e) => {
+    db = e.target.result;
+    refreshDataList();
+  };
+
+  function refreshDataList() {
+    if (!db) return;
+    const tx = db.transaction("tokens", "readonly");
+    const store = tx.objectStore("tokens");
+    const req = store.getAllKeys();
+    req.onsuccess = () => {
+      const list = document.getElementById('tokenDataList');
+      list.innerHTML = '';
+      req.result.forEach(k => {
+        const opt = document.createElement('option');
+        opt.value = k.charAt(0).toUpperCase() + k.slice(1);
+        list.appendChild(opt);
+      });
+      if (req.result.length > 50) {
+        document.getElementById('btnDownloadOffline').textContent = `Colección Lista (${req.result.length}) ✓`;
+      }
+    };
+  }
+
+  async function resolveAndShowToken(rawQuery) {
+    const term = normalizeVoice(rawQuery);
+    const key = term.toLowerCase().trim();
+
+    openModal(term);
+    document.getElementById('previewStatus').textContent = "Consultando base de datos interna...";
+
+    const tx = db.transaction("tokens", "readonly");
+    const store = tx.objectStore("tokens");
+    const req = store.get(key);
+
+    req.onsuccess = () => {
+      if (req.result) {
+        document.getElementById('previewStatus').textContent = "✓ Cargado de Memoria (100% Offline)";
+        document.getElementById('previewTitle').textContent = req.result.name;
+        currentLines = req.result.lines;
+        currentW = req.result.width;
+        currentH = req.result.height;
+        drawLinesToCanvas(currentLines, currentW, currentH);
+      } else {
+        // Si no está descargado previamente, buscar en caliente en Scryfall
+        fetchScryfallOnline(term, key);
+      }
+    };
+  }
+
+  async function fetchScryfallOnline(term, key) {
+    document.getElementById('previewStatus').textContent = "Buscando en Scryfall en la nube...";
+    try {
+      let resp = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(term)}`);
+      if (!resp.ok) {
+        resp = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(term + ' Token')}`);
+      }
+      if (!resp.ok) throw new Error("Carta no encontrada");
+      const card = await resp.json();
+      const imgUrl = card.image_uris?.normal || card.card_faces?.[0]?.image_uris?.normal;
+      if (!imgUrl) throw new Error("Sin imagen");
+
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const width = 384;
+        const height = Math.floor(img.height * (width / img.width));
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const ctx = tempCanvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const imgData = ctx.getImageData(0, 0, width, height);
+        const d = imgData.data;
+
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            const oldVal = 0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2];
+            const newVal = oldVal < 128 ? 0 : 255;
+            const err = oldVal - newVal;
+            d[idx] = d[idx + 1] = d[idx + 2] = newVal;
+            if (x + 1 < width) d[(y * width + (x + 1)) * 4] += err * 7 / 16;
+            if (x - 1 >= 0 && y + 1 < height) d[((y + 1) * width + (x - 1)) * 4] += err * 3 / 16;
+            if (y + 1 < height) d[((y + 1) * width + x) * 4] += err * 5 / 16;
+            if (x + 1 < width && y + 1 < height) d[((y + 1) * width + (x + 1)) * 4] += err * 1 / 16;
+          }
+        }
+
+        const bytesPerLine = width / 8;
+        const lines = [];
+        for (let y = 0; y < height; y++) {
+          const line = new Uint8Array(bytesPerLine);
+          for (let x = 0; x < width; x++) {
+            if (d[(y * width + x) * 4] === 0) line[Math.floor(x / 8)] |= (0x80 >> (x % 8));
+          }
+          lines.push(line);
+        }
+
+        currentLines = lines; currentW = width; currentH = height;
+        drawLinesToCanvas(lines, width, height);
+
+        const writeTx = db.transaction("tokens", "readwrite");
+        writeTx.objectStore("tokens").put({ key, name: card.name, width, height, lines });
+        document.getElementById('previewStatus').textContent = "✓ Guardada en local";
+      };
+      img.src = imgUrl;
+    } catch (e) {
+      document.getElementById('previewStatus').textContent = `Aviso: ${e.message}`;
+    }
+  }
+
+  function drawLinesToCanvas(lines, width, height) {
+    const cvs = document.getElementById('modalCanvas');
+    const ctx = cvs.getContext('2d');
+    cvs.width = width;
+    cvs.height = height;
+    const imgData = ctx.createImageData(width, height);
+    const d = imgData.data;
+
+    for (let y = 0; y < height; y++) {
+      const line = lines[y];
+      for (let x = 0; x < width; x++) {
+        const isBlack = (line[Math.floor(x / 8)] & (0x80 >> (x % 8))) !== 0;
+        const idx = (y * width + x) * 4;
+        const val = isBlack ? 0 : 255;
+        d[idx] = val; d[idx+1] = val; d[idx+2] = val; d[idx+3] = 255;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    cvs.style.display = "block";
+    document.getElementById('btnConfirmPrint').style.display = "block";
+  }
+
+  /* -------------------------------------------------------------
+     4. CARGA MASIVA INSTANTÁNEA DESDE tokens_db.json
+  ------------------------------------------------------------- */
+  document.getElementById('btnDownloadOffline').addEventListener('click', async () => {
+    const btn = document.getElementById('btnDownloadOffline');
+    const box = document.getElementById('downloadProgressBox');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('downloadProgressText');
+
+    btn.disabled = true;
+    box.style.display = "block";
+    progressText.textContent = "Descargando archivo comprimido tokens_db.json...";
+    progressFill.style.width = "30%";
+
+    try {
+      const resp = await fetch('tokens_db.json');
+      if (!resp.ok) throw new Error("No se ha encontrado el archivo tokens_db.json en el servidor.");
+
+      progressText.textContent = "Desempaquetando base de datos binaria...";
+      progressFill.style.width = "65%";
+      const tokensDb = await resp.json();
+
+      const keys = Object.keys(tokensDb);
+      const total = keys.length;
+
+      // Volcado directo en IndexedDB
+      const tx = db.transaction("tokens", "readwrite");
+      const store = tx.objectStore("tokens");
+
+      for (let i = 0; i < total; i++) {
+        const k = keys[i];
+        const item = tokensDb[k];
+
+        // Convertir la cadena hexadecimal a líneas de bytes
+        const hexStr = item.hex;
+        const totalBytes = hexStr.length / 2;
+        const rawBytes = new Uint8Array(totalBytes);
+        for (let b = 0; b < totalBytes; b++) {
+          rawBytes[b] = parseInt(hexStr.substr(b * 2, 2), 16);
+        }
+
+        const bytesPerLine = item.w / 8;
+        const lines = [];
+        for (let y = 0; y < item.h; y++) {
+          lines.push(rawBytes.slice(y * bytesPerLine, (y + 1) * bytesPerLine));
+        }
+
+        store.put({
+          key: k.toLowerCase().replace(" token", "").trim(),
+          name: item.name,
+          width: item.w,
+          height: item.h,
+          lines: lines
+        });
+      }
+
+      tx.oncomplete = () => {
+        progressFill.style.width = "100%";
+        progressText.textContent = `¡Completado! ${total} tokens instalados en tu dispositivo.`;
+        refreshDataList();
+        setTimeout(() => { box.style.display = "none"; }, 3000);
+        btn.textContent = `Colección Completa (${total}) ✓`;
+        showToast("¡Base de datos 100% offline lista!");
+      };
+
+    } catch (err) {
+      progressText.textContent = `Error: ${err.message}`;
+      btn.disabled = false;
+      showToast("Asegúrate de subir tokens_db.json a GitHub.");
+    }
+  });
+
+  /* -------------------------------------------------------------
+     5. RECONOCIMIENTO DE VOZ Y MODAL
+  ------------------------------------------------------------- */
+  function openModal(title) {
+    document.getElementById('previewTitle').textContent = title || "Buscar Ficha";
+    document.getElementById('modalCanvas').style.display = "none";
+    document.getElementById('btnConfirmPrint').style.display = "none";
+    document.getElementById('previewModal').classList.add('show');
+  }
+
+  function closeModal() {
+    document.getElementById('previewModal').classList.remove('show');
+  }
+
+  document.getElementById('btnManualGo').addEventListener('click', () => {
+    const val = document.getElementById('manualSearchInput').value.trim();
+    if (val) resolveAndShowToken(val);
+  });
+
+  const micBtn = document.getElementById('micHub');
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognizer = null;
+
+  if (SpeechRec) {
+    recognizer = new SpeechRec();
+    recognizer.lang = 'es-ES';
+    recognizer.onstart = () => { micBtn.classList.add('listening'); showToast("Escuchando... Di p. ej. 'Tesoro'"); };
+    recognizer.onresult = (e) => {
+      const text = e.results[0][0].transcript;
+      showToast(`Oído: "${text}"`);
+      resolveAndShowToken(text);
+    };
+    recognizer.onerror = () => openModal("");
+    recognizer.onend = () => micBtn.classList.remove('listening');
+  }
+
+  micBtn.addEventListener('click', () => {
+    if (recognizer) {
+      try { recognizer.start(); } catch(e) { openModal(""); }
+    } else {
+      openModal("");
+    }
+  });
+
+  /* -------------------------------------------------------------
+     6. BLUETOOTH BLE (Fun Print / GB01)
+  ------------------------------------------------------------- */
+  let printChar = null;
+
+  document.getElementById('btnBle').addEventListener('click', async () => {
+    try {
+      showToast("Buscando impresora...");
+      const dev = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          '0000fee7-0000-1000-8000-00805f9b34fb',
+          '0000ff00-0000-1000-8000-00805f9b34fb',
+          '0000ae30-0000-1000-8000-00805f9b34fb',
+          '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+        ]
+      });
+      const srv = await dev.gatt.connect();
+      const services = await srv.getPrimaryServices();
+      for (const s of services) {
+        const chars = await s.getCharacteristics();
+        for (const c of chars) {
+          if (c.properties.write || c.properties.writeWithoutResponse) { printChar = c; break; }
+        }
+        if (printChar) break;
+      }
+      if (!printChar) throw new Error("Canal BLE no hallado");
+      document.getElementById('btnBle').textContent = "Conectada";
+      document.getElementById('btnBle').classList.add('connected');
+      showToast("Impresora lista para imprimir.");
+    } catch (e) {
+      showToast(`Fallo BLE: ${e.message}`);
+    }
+  });
+
+  document.getElementById('btnConfirmPrint').addEventListener('click', async () => {
+    if (!printChar) { alert("Conecta primero la impresora desde el botón superior."); return; }
+    if (!currentLines) return;
+    closeModal();
+    showToast("Imprimiendo ficha...");
+    const bytesPerLine = currentW / 8;
+    try {
+      await sendBle(new Uint8Array([0x51, 0x78, 0xae, 0x01, 0x01, 0x00, 0x10, 0x70, 0xff]));
+      for (let y = 0; y < currentH; y++) {
+        const pkt = new Uint8Array(bytesPerLine + 8);
+        pkt[0] = 0x51; pkt[1] = 0x78; pkt[2] = 0xa2; pkt[3] = 0x00;
+        pkt[4] = bytesPerLine; pkt[5] = 0x00;
+        pkt.set(currentLines[y], 6);
+        pkt[bytesPerLine + 6] = 0x00; pkt[bytesPerLine + 7] = 0xff;
+        await sendBle(pkt);
+      }
+      await sendBle(new Uint8Array([0x51, 0x78, 0xa1, 0x01, 0x50, 0x00, 0x00, 0xff]));
+      showToast("¡Token impreso!");
+    } catch (e) {
+      showToast(`Error al imprimir: ${e.message}`);
+    }
+  });
+
+  async function sendBle(data) {
+    const S = 100;
+    for (let i = 0; i < data.length; i += S) {
+      await printChar.writeValueWithoutResponse(data.slice(i, i + S));
+      await new Promise(r => setTimeout(r, 8));
+    }
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t.timer);
+    t.timer = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+  }
+
+  initPlayers(4);
+</script>
+</body>
+</html>
